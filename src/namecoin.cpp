@@ -828,6 +828,7 @@ Value name_history(const Array& params, bool fHelp)
                 string strAddress = "";
                 GetNameAddress(txPos, strAddress);
                 oName.push_back(Pair("address", strAddress));
+                oName.push_back(Pair("block_height", nHeight));
                 oName.push_back(Pair("expires_in", nHeight + GetDisplayExpirationDepth(nHeight) - pindexBest->nHeight));
                 if(nHeight + GetDisplayExpirationDepth(nHeight) - pindexBest->nHeight <= 0)
                 {
@@ -877,11 +878,11 @@ Value name_filter(const Array& params, bool fHelp)
     Array oRes;
 
     vector<unsigned char> vchName;
-    vector<pair<vector<unsigned char>, CNameIndex> > nameScan;
+    vector<pair<vector<unsigned char>, vector<CNameIndex> > > nameScan;
     if (!dbName.ScanNames(vchName, 100000000, nameScan))
         throw JSONRPCError(RPC_WALLET_ERROR, "scan failed");
 
-    pair<vector<unsigned char>, CNameIndex> pairScan;
+    pair<vector<unsigned char>, vector<CNameIndex> > pairScan;
     BOOST_FOREACH(pairScan, nameScan)
     {
         string name = stringFromVch(pairScan.first);
@@ -893,7 +894,7 @@ Value name_filter(const Array& params, bool fHelp)
         if(strRegexp != "" && !regex_search(name, nameparts, cregex))
             continue;
 
-        CNameIndex txName = pairScan.second;
+        CNameIndex txName = pairScan.second.back();
         int nHeight = txName.nHeight;
 
         // max age
@@ -909,6 +910,8 @@ Value name_filter(const Array& params, bool fHelp)
         oName.push_back(Pair("name", name));
         CTransaction tx;
         CDiskTxPos txPos = txName.txPos;
+        CNameIndex firstSeenTxName = pairScan.second.front();
+        int nFirstSeenHeignt = firstSeenTxName.nHeight;
         if ((nHeight + GetDisplayExpirationDepth(nHeight) - pindexBest->nHeight <= 0)
             || txPos.IsNull()
             || !tx.ReadFromDisk(txPos))
@@ -922,6 +925,7 @@ Value name_filter(const Array& params, bool fHelp)
             string value = stringFromVch(vchValue);
             oName.push_back(Pair("value", value));
             oName.push_back(Pair("expires_in", nHeight + GetDisplayExpirationDepth(nHeight) - pindexBest->nHeight));
+            oName.push_back(Pair("first_seen", nFirstSeenHeignt));
         }
         oRes.push_back(oName);
 
@@ -973,12 +977,12 @@ Value name_scan(const Array& params, bool fHelp)
     Array oRes;
 
     //vector<pair<vector<unsigned char>, CDiskTxPos> > nameScan;
-    vector<pair<vector<unsigned char>, CNameIndex> > nameScan;
+    vector<pair<vector<unsigned char>, vector<CNameIndex> > > nameScan;
     if (!dbName.ScanNames(vchName, nMax, nameScan))
         throw JSONRPCError(RPC_WALLET_ERROR, "scan failed");
 
     //pair<vector<unsigned char>, CDiskTxPos> pairScan;
-    pair<vector<unsigned char>, CNameIndex> pairScan;
+    pair<vector<unsigned char>, vector<CNameIndex> > pairScan;
     BOOST_FOREACH(pairScan, nameScan)
     {
         Object oName;
@@ -986,11 +990,13 @@ Value name_scan(const Array& params, bool fHelp)
         oName.push_back(Pair("name", name));
         //vector<unsigned char> vchValue;
         CTransaction tx;
-        CNameIndex txName = pairScan.second;
+        CNameIndex txName = pairScan.second.back();
+        CNameIndex firstSeenTxName = pairScan.second.front();
         CDiskTxPos txPos = txName.txPos;
         //CDiskTxPos txPos = pairScan.second;
         //int nHeight = GetTxPosHeight(txPos);
         int nHeight = txName.nHeight;
+        int nFirstSeenHeignt = firstSeenTxName.nHeight;
         vector<unsigned char> vchValue = txName.vValue;
         if ((nHeight + GetDisplayExpirationDepth(nHeight) - pindexBest->nHeight <= 0)
             || txPos.IsNull()
@@ -1008,6 +1014,7 @@ Value name_scan(const Array& params, bool fHelp)
             //oName.push_back(Pair("txid", tx.GetHash().GetHex()));
             //oName.push_back(Pair("address", strAddress));
             oName.push_back(Pair("expires_in", nHeight + GetDisplayExpirationDepth(nHeight) - pindexBest->nHeight));
+            oName.push_back(Pair("first_seen", nFirstSeenHeignt));
         }
         oRes.push_back(oName);
     }
@@ -1447,8 +1454,7 @@ bool CNameDB::test()
 bool CNameDB::ScanNames(
         const vector<unsigned char>& vchName,
         int nMax,
-        vector<pair<vector<unsigned char>, CNameIndex> >& nameScan)
-        //vector<pair<vector<unsigned char>, CDiskTxPos> >& nameScan)
+        vector<pair<vector<unsigned char>, vector<CNameIndex> > >& nameScan)
 {
     Dbc* pcursor = GetCursor();
     if (!pcursor)
@@ -1477,16 +1483,14 @@ bool CNameDB::ScanNames(
             vector<unsigned char> vchName;
             ssKey >> vchName;
             string strName = stringFromVch(vchName);
-            //vector<CDiskTxPos> vtxPos;
             vector<CNameIndex> vtxPos;
             ssValue >> vtxPos;
-            //CDiskTxPos txPos;
-            CNameIndex txPos;
-            if (!vtxPos.empty())
-            {
-                txPos = vtxPos.back();
+            if (vtxPos.empty()) {
+                // cowardly refusing to return an empty vector...
+                printf("Error: transaction vector for [%s] is empty", strName.c_str());
+            } else {
+                nameScan.push_back(make_pair(vchName, vtxPos));
             }
-            nameScan.push_back(make_pair(vchName, txPos));
         }
 
         if (nameScan.size() >= nMax)

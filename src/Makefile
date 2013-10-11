@@ -18,10 +18,18 @@ LIBPATHS= \
 	-L../libs/db-4.7.25.NC/build_unix \
 	-L../libs/boost_1_50_0/stage/lib
 
+ifeq ($(NO_PIE), 1)
+    BOOST_LINKAGE=-Bstatic
+    PIE=
+else
+    BOOST_LINKAGE=-Bdynamic
+    PIE=-pie
+endif
+
 LIBBOOST_SUFFIX=
 
 LIBS= \
- -Wl,-Bstatic \
+ -Wl,$(BOOST_LINKAGE) \
    -l boost_system$(LIBBOOST_SUFFIX) \
    -l boost_filesystem$(LIBBOOST_SUFFIX) \
    -l boost_program_options$(LIBBOOST_SUFFIX) \
@@ -70,7 +78,10 @@ namecoind: USE_UPNP:=0
 			-l pthread
 	endif
 
-CXXFLAGS=-O2 -Wno-invalid-offsetof -Wformat $(DEFS) $(INCLUDEPATHS)
+CXXFLAGS=-O2 -Wno-invalid-offsetof -Wformat
+    -fno-stack-protector -fstack-protector-all -Wstack-protector \
+    -fPIC \
+     $(DEFS) $(INCLUDEPATHS)
 HEADERS=headers.h strlcpy.h serialize.h uint256.h util.h key.h bignum.h base58.h \
     script.h allocators.h db.h walletdb.h crypter.h net.h irc.h keystore.h main.h wallet.h bitcoinrpc.h uibase.h ui.h noui.h init.h auxpow.h
 
@@ -110,7 +121,7 @@ obj/test/%.o: test/%.cpp $(HEADERS)
 obj/nogui/namecoin.o: namecoin.h
 
 namecoind: $(OBJS:obj/%=obj/nogui/%) obj/nogui/namecoin.o
-	$(CXX) $(CXXFLAGS) -o $@ $(LIBPATHS) $^ $(LIBS)
+	$(CXX) $(CXXFLAGS) $(PIE) -o $@ $(LIBPATHS) $^ $(LIBS)
 
 clean:
 	-rm -f namecoin namecoind

@@ -739,7 +739,7 @@ inline bool TerminateThread(pthread_t hthread, unsigned int nExitCode)
 
 inline void ExitThread(unsigned int nExitCode)
 {
-    pthread_exit((void*)nExitCode);
+    pthread_exit((void*)(uintptr_t)nExitCode);
 }
 #endif
 
