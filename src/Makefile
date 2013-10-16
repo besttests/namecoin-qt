@@ -78,7 +78,7 @@ namecoind: USE_UPNP:=0
 			-l pthread
 	endif
 
-CXXFLAGS=-O2 -Wno-invalid-offsetof -Wformat
+CXXFLAGS=-g -Wno-invalid-offsetof -Wformat \
     -fno-stack-protector -fstack-protector-all -Wstack-protector \
     -fPIC \
      $(DEFS) $(INCLUDEPATHS)
